@@ -31,7 +31,7 @@
 </script>
 
 <div data-testid="svelte-accordion" class="accordion">
-  {#each items as item, index}
+  {#each items as item, index (index)}
     <div class="accordion-item">
       <button
         class="accordion-header"
