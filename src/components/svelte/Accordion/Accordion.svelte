@@ -14,6 +14,7 @@
   function toggleItem(index: number) {
     if (allowMultiple) {
       const idx = openIndexes.indexOf(index);
+
       if (idx > -1) {
         openIndexes = openIndexes.filter(i => i !== index);
       } else {
@@ -30,7 +31,7 @@
 </script>
 
 <div data-testid="svelte-accordion" class="accordion">
-  {#each items as item, index}
+  {#each items as item, index (index)}
     <div class="accordion-item">
       <button
         class="accordion-header"
