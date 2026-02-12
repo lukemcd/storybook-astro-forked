@@ -61,12 +61,20 @@ export async function vitePluginStorybookAstroMiddleware(options: FrameworkOptio
     }
   };
 
+  // The extracted CSS plugins from Astro's internal Vite server cause Vue SFC
+  // <style> blocks to be double-processed (once by these plugins, once by
+  // Storybook's built-in CSS plugins), resulting in PostCSS errors.
+  // 
+  // Solution: Don't extract Astro's CSS plugins. Storybook's built-in CSS
+  // plugins handle both Vue styles AND Astro style sub-modules (which are
+  // standard CSS imports like `Component.astro?astro&type=style&index=0&lang.css`).
+  // 
+  // The Astro internal server's CSS plugins are only needed for SSR rendering
+  // within that server - they don't need to be shared with Storybook's server.
   return {
     vitePlugin,
     viteConfig: {
       plugins: [
-        viteServer.config.plugins.find((plugin) => plugin.name === 'vite:css'),
-        viteServer.config.plugins.find((plugin) => plugin.name === 'vite:css-post'),
         assetServingPlugin
       ].filter(Boolean)
     }
@@ -95,6 +103,11 @@ export async function createViteServer(integrations: Integration[]) {
       vitePluginAstroFontsFallback()
     ]
   });
+
+  // Initialize the server's plugin container to ensure all plugins are ready.
+  // Without this, some plugins (like vite:css) may have uninitialized state
+  // when ssrLoadModule is called.
+  await viteServer.pluginContainer.buildStart({});
 
   return viteServer;
 }

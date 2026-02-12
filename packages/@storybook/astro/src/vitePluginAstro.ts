@@ -16,6 +16,7 @@ const ASTRO_PLUGINS_THAT_ARE_SUPPOSEDLY_NOT_NEEDED_IN_STORYBOOK = [
   'astro:html',
   'astro:i18n',
   'astro:integration-container',
+  'astro:jsx',
   'astro:markdown',
   'astro:postprocess',
   'astro:prefetch',
