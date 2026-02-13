@@ -372,8 +372,13 @@ If you're interested in helping add support for any of these features, please se
 
 **Any help is highly appreciated!** This project is experimental and welcomes contributions. Please see the `AGENTS.md` file for guidance on AI-assisted development.
 
+## Acknowledgments
+
+This project is based on [storybook-astro](https://github.com/slawekkolodziej/storybook-astro) by [Sławek Kołodziej](https://github.com/slawekkolodziej), which pioneered the approach of using Astro's Container API to render Astro components within Storybook.
+
 ## Related Links
 
+- [Original Project: slawekkolodziej/storybook-astro](https://github.com/slawekkolodziej/storybook-astro)
 - [Feature Request: storybookjs/storybook#18356](https://github.com/storybookjs/storybook/issues/18356)
 - [Storybook Framework Documentation](https://storybook.js.org/docs/configure/integration/frameworks)
 - [Astro Container API](https://docs.astro.build/en/reference/container-reference/)
