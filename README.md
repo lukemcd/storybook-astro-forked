@@ -19,6 +19,7 @@ This package provides a complete Storybook framework integration for Astro compo
 - **Server-side render Astro components** using Astro's Container API
 - **Support multiple UI frameworks** within Astro components (React, Vue, Svelte, Preact, Solid, Alpine.js)
 - **Live preview components** with hot module replacement during development
+- **Build and deploy static Storybook** with pre-rendered Astro components
 - **Handle component hydration** and client-side interactivity
 
 ## Architecture
@@ -38,7 +39,8 @@ The core framework implementation that integrates Astro with Storybook's build s
 - `src/preset.ts` - Storybook framework configuration and Vite setup
 - `src/middleware.ts` - Astro Container setup and server-side rendering handler
 - `src/integrations/` - Integration adapters for React, Vue, Svelte, Preact, Solid, and Alpine.js
-- `src/viteStorybookAstroMiddlewarePlugin.ts` - Vite plugin for handling render requests
+- `src/viteStorybookAstroMiddlewarePlugin.ts` - Vite plugin for handling render requests (dev)
+- `src/vitePluginAstroBuildPrerender.ts` - Pre-renders Astro component stories at build time
 - `src/vitePluginAstroComponentMarker.ts` - Patches Astro 6's client-side `.astro` stubs for Storybook
 - `src/vitePluginAstroFontsFallback.ts` - Stubs Astro 6's font virtual modules
 
@@ -58,14 +60,32 @@ The client-side rendering package that manages how Astro components are displaye
 
 ## How It Works
 
+### Dev Mode (`storybook dev`)
+
 1. **Story Definition**: Stories import Astro components (`.astro` files) and define variations with different props
 2. **Component Detection**: The renderer identifies Astro components by checking for the `isAstroComponentFactory` flag (patched by `vitePluginAstroComponentMarker` in Astro 6)
-3. **Server Rendering**: When an Astro component is detected, a render request is sent to the Vite dev server middleware
+3. **Server Rendering**: When an Astro component is detected, a render request is sent to the Vite dev server middleware via HMR
 4. **Container Rendering**: The middleware uses Astro's Container API to render the component with the provided props and slots (with `patchCreateAstroCompat` to bridge the Astro compiler v2/v3 calling convention difference)
 5. **HTML Injection**: The rendered HTML is sent back to the client and injected into Storybook's canvas
 6. **Hydration**: Client-side scripts are executed to add interactivity (for frameworks like Alpine.js or framework islands)
 7. **Framework Delegation**: For non-Astro framework components (React, Solid, Vue, etc.), the renderer delegates directly to the framework-specific `renderToCanvas` before calling `storyFn()`, avoiding orphaned reactive effects
 8. **HMR Updates**: Changes to components trigger re-renders while preserving state when possible
+
+### Static Build (`storybook build`)
+
+Since Astro components require server-side rendering via the Container API, static builds use a **build-time pre-rendering** approach:
+
+1. **SSR Server**: During the Vite build, `vitePluginAstroBuildPrerender` creates an internal Vite SSR server with AstroContainer
+2. **Story Discovery**: For each story file that imports an `.astro` component, the plugin loads the full story module via `ssrLoadModule` to get fully evaluated args (including imported assets like images)
+3. **Pre-rendering**: Each story variant is rendered using AstroContainer with its merged args (meta + story level)
+4. **HTML Injection**: The pre-rendered HTML is injected as a `parameters.__astroPrerendered` property on each story export
+5. **Asset Emission**: Any `/@fs` dev-server asset URLs (e.g. images) in the rendered HTML are emitted as Rollup assets with content-hashed filenames, and the URLs are rewritten to their final paths
+6. **Client Runtime**: The renderer detects the pre-rendered HTML parameter and uses it directly, bypassing the HMR path
+
+**Limitations of static builds:**
+- Astro component stories are rendered with their default args at build time — changing args via the Controls panel has no effect
+- Framework component stories (React, Vue, Svelte, etc.) are unaffected and remain fully interactive
+- Stories that override the meta-level `component` are not pre-rendered
 
 ## Setup Instructions
 
@@ -95,7 +115,12 @@ node --version
    yarn storybook
    ```
 
-4. Run tests (validates component rendering and framework integration health):
+4. Build a static Storybook:
+   ```bash
+   yarn build-storybook
+   ```
+
+5. Run tests (validates component rendering and framework integration health):
    ```bash
    yarn test
    ```
@@ -223,8 +248,9 @@ storybook-astro/
 │       │   │   ├── preset.ts                             # Storybook config
 │       │   │   ├── portable-stories.ts                   # composeStories for testing
 │       │   │   ├── vitePluginAstroComponentMarker.ts     # Astro 6 component detection
+│       │   │   ├── vitePluginAstroBuildPrerender.ts      # Build-time pre-rendering
 │       │   │   ├── vitePluginAstroFontsFallback.ts       # Astro 6 font module stubs
-│       │   │   ├── viteStorybookAstroMiddlewarePlugin.ts # Render request handling
+│       │   │   ├── viteStorybookAstroMiddlewarePlugin.ts # Render request handling (dev)
 │       │   │   └── viteStorybookRendererFallbackPlugin.ts
 │       │   └── package.json
 │       └── astro-renderer/     # Client renderer
@@ -247,10 +273,6 @@ storybook-astro/
 ### Solid Testing Limitation
 
 Solid components render and work correctly in Storybook's browser. However, in the Vitest test environment, Solid's SSR compilation mode conflicts with the client-side runtime: the compiled code calls `template()` (a client API) but at runtime it resolves to `server.js` where `template` is aliased to a function that throws "Client-only API called on the server side". The workaround is a non-recursive include glob in `vitest.config.ts` so that `vite-plugin-solid` doesn't compile the nested component files. Composition tests still pass; actual Solid rendering is validated in the browser.
-
-### Vue Component Styling
-
-Vue single-file components (`.vue`) with `<style scoped>` blocks may encounter PostCSS parsing errors ("Unknown word" errors) when styles are tightly formatted without spacing between CSS rule sets. This is a PostCSS parsing issue in the Vue SFC compiler.
 
 ### Other Known Issues
 
@@ -279,7 +301,7 @@ Astro 6 introduced several breaking changes to how components are transformed an
 
 **Problem**: Astro 6's client-side transform no longer includes `<style>` block imports. Storybook's preview iframe receives the component stub but none of the scoped CSS.
 
-**Solution**: The same component marker plugin reads the original `.astro` source, counts `<style>` blocks, and generates import statements for each style sub-module using Astro's convention: `Component.astro?astro&type=style&index=N&lang.css`.
+**Solution**: The component marker plugin reads the original `.astro` source, counts `<style>` blocks, and generates import statements for each style sub-module using Astro's convention: `Component.astro?astro&type=style&index=N&lang.css`. During builds, Astro's compile metadata cache is not populated for client-side transforms, so the sub-module imports would fail. Instead, the plugin extracts raw CSS directly from the `.astro` source and inlines it.
 
 ### 4. Font Virtual Modules (`vitePluginAstroFontsFallback`)
 
@@ -310,6 +332,7 @@ This section tracks Astro's built-in framework features and their compatibility 
 - **Scoped Styles** - Component-scoped CSS (including Astro 6's style sub-module imports)
 - **Multiple Framework Support** - React, Vue, Svelte, Preact, Solid, and Alpine.js
 - **Client Directives** - `client:load`, `client:only`, etc. for framework components
+- **Static Builds** - `storybook build` with build-time pre-rendering of Astro component stories
 
 ### ⚠️ Partial Support
 
@@ -334,11 +357,10 @@ This section tracks Astro's built-in framework features and their compatibility 
 
 ### 🔮 Future Considerations
 
-- **Static Site Generation (SSG)** - Currently only dev server rendering is supported; static builds would require architectural changes
-- **Server-Side Rendering (SSR)** - Full SSR mode compatibility
+- **Dynamic Astro Controls in Static Builds** - Currently, Astro component stories are pre-rendered with their default args at build time. A future enhancement could add a companion server or service worker to enable live re-rendering with different args.
 - **Adapters** - Integration with Astro's deployment adapters (Netlify, Vercel, etc.)
 - **Error Handling** - Better error boundaries and recovery mechanisms
-- **Performance Optimizations** - Caching strategies and render optimization
+- **Performance Optimizations** - Caching strategies and render optimization for large component libraries
 
 ### Contributing to Feature Support
 

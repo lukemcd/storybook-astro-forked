@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { createServer, type PluginOption } from 'vite';
+import { createServer, type PluginOption, type ViteDevServer } from 'vite';
 import type { RenderRequestMessage, RenderResponseMessage } from '@storybook/astro-renderer/types';
 import type { FrameworkOptions } from './types.ts';
 import type { Integration } from './integrations/index.ts';
@@ -7,11 +7,15 @@ import { viteAstroContainerRenderersPlugin } from './viteAstroContainerRenderers
 import { vitePluginAstroFontsFallback } from './vitePluginAstroFontsFallback.ts';
 
 export async function vitePluginStorybookAstroMiddleware(options: FrameworkOptions) {
-  const viteServer = await createViteServer(options.integrations);
+  // The internal Vite server is created lazily inside configureServer (dev-only).
+  // During builds, configureServer never fires, so no server is created.
+  let viteServer: ViteDevServer | null = null;
 
   const vitePlugin = {
     name: 'storybook-astro-middleware-plugin',
     async configureServer(server) {
+      viteServer = await createViteServer(options.integrations);
+
       const filePath = fileURLToPath(new URL('./middleware', import.meta.url));
       const middleware = await viteServer.ssrLoadModule(filePath, {
         fixStacktrace: true
@@ -45,11 +49,15 @@ export async function vitePluginStorybookAstroMiddleware(options: FrameworkOptio
     }
   } satisfies PluginOption;
 
-  // Create asset serving plugin
+  // Create asset serving plugin (only active in dev when viteServer exists)
   const assetServingPlugin = {
     name: 'storybook-astro-assets',
     configureServer(server) {
       server.middlewares.use('/_image', (req, res, next) => {
+        if (!viteServer) {
+          next();
+          return;
+        }
         // Forward the request to the Astro vite server
         viteServer.middlewares.handle(req, res, (err) => {
           if (err) {

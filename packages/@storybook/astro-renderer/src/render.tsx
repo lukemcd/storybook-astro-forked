@@ -171,7 +171,7 @@ export async function renderToCanvas(
 
   // Handle Astro components with server-side rendering
   if (isAstroComponent(element)) {
-    await renderAstroToCanvas(element, storyContext.args, canvasElement);
+    await renderAstroToCanvas(element, storyContext.args, canvasElement, storyContext);
 
     return;
   }
@@ -217,12 +217,26 @@ function isAstroComponent(element: unknown): element is AstroComponent {
 
 /**
  * Renders an Astro component to the canvas using server-side rendering.
+ *
+ * In static builds, checks for build-time pre-rendered HTML (injected by
+ * vitePluginAstroBuildPrerender) before falling back to the HMR path.
  */
 async function renderAstroToCanvas(
   element: AstroComponent,
   args: Record<string, unknown>,
-  canvasElement: $FIXME
+  canvasElement: $FIXME,
+  storyContext?: $FIXME
 ): Promise<void> {
+  // In static builds, use build-time pre-rendered HTML if available
+  const prerenderedHtml = storyContext?.parameters?.__astroPrerendered;
+
+  if (prerenderedHtml && !import.meta.hot) {
+    canvasElement.innerHTML = prerenderedHtml;
+    activateScriptTags(canvasElement);
+
+    return;
+  }
+
   if (!element.moduleId) {
     throw new Error('Astro component missing moduleId');
   }
@@ -318,6 +332,9 @@ function activateScriptTags(container: $FIXME): void {
 /**
  * Renders an Astro component using server-side rendering via Vite HMR communication.
  * 
+ * In static builds (no dev server), returns an informational fallback message since
+ * Astro components require server-side rendering via the Container API.
+ * 
  * @param data - Component render request data
  * @param timeoutMs - Maximum time to wait for rendering (default: 5000ms)
  * @returns Promise that resolves with the rendered HTML
@@ -326,6 +343,24 @@ async function renderAstroComponent(
   data: RenderComponentInput, 
   timeoutMs = 5000
 ): Promise<RenderResponseMessage['data']> {
+  // In static builds, import.meta.hot is undefined — no dev server to handle SSR.
+  if (!import.meta.hot) {
+    return {
+      id: 'static-build',
+      html:
+        '<div style="padding: 20px; border: 2px dashed #8b8b8b; border-radius: 8px; ' +
+        'text-align: center; color: #6b6b6b; font-family: system-ui, sans-serif; ' +
+        'background: #f8f8f8">' +
+        '<p style="margin: 0 0 8px; font-size: 16px; font-weight: 600">' +
+        'Astro Component</p>' +
+        '<p style="margin: 0; font-size: 13px">' +
+        'Astro components require server-side rendering and cannot be displayed ' +
+        'in a static build. Run <code style="background: #e8e8e8; padding: 2px 6px; ' +
+        'border-radius: 3px">storybook dev</code> for interactive rendering.</p>' +
+        '</div>'
+    };
+  }
+
   const id = crypto.randomUUID();
 
   const promise = new Promise<RenderResponseMessage['data']>((resolve, reject) => {
