@@ -163,7 +163,7 @@ The package includes a `composeStories` function that enables testing of Storybo
 ```javascript
 // Card.test.ts
 import { composeStories } from '@storybook/astro';
-import { testStoryRenders, testStoryComposition } from './test-utils';
+import { testStoryRenders, testStoryComposition } from '@storybook/astro/testing';
 import * as stories from './Card.stories.jsx';
 
 const { Default, Highlighted } = composeStories(stories);
@@ -181,7 +181,7 @@ The test suite validates the health of all framework integrations by attempting 
 
 ### Vitest / Vite 6 Compatibility
 
-Vite 6's ESM module runner cannot evaluate raw CommonJS modules. The `cjsInteropPlugin()` in `lib/test-utils.ts` handles this by:
+Vite 6's ESM module runner cannot evaluate raw CommonJS modules. The `cjsInteropPlugin()` from `@storybook/astro/testing` handles this by:
 - Redirecting bare package imports to their ESM entry points via `resolveId`
 - Auto-detecting and wrapping remaining CJS modules with ESM-compatible shims (providing `module`, `exports`, `require`, `__dirname`, `__filename`)
 
@@ -199,13 +199,15 @@ Solid components render correctly in Storybook's browser, but the Vitest config 
 
 ### Test Utilities
 
-The project includes standardized test utilities:
+All testing utilities are available from the `@storybook/astro/testing` entry point:
 
-- **`test-utils.ts`** (root) - Vitest test helpers:
-  - `testStoryComposition(name, story)` - Verifies story can be imported and composed
-  - `testStoryRenders(name, story)` - Validates story renders without errors
-- **`lib/test-utils.ts`** - Vite plugins for the test environment:
-  - `cjsInteropPlugin()` - Wraps CJS modules for Vite 6's ESM runner
+```javascript
+import { testStoryRenders, testStoryComposition, cjsInteropPlugin } from '@storybook/astro/testing';
+```
+
+- `testStoryComposition(name, story)` - Verifies story can be imported and composed
+- `testStoryRenders(name, story)` - Validates story renders without errors
+- `cjsInteropPlugin()` - Vite plugin that wraps CJS modules for Vite 6's ESM runner
 
 These utilities provide consistent testing patterns across all component tests.
 
@@ -247,6 +249,7 @@ storybook-astro/
 │       │   │   ├── middleware.ts                         # SSR handler + createAstro compat
 │       │   │   ├── preset.ts                             # Storybook config
 │       │   │   ├── portable-stories.ts                   # composeStories for testing
+│       │   │   ├── testing.ts                             # Test utilities (testStoryRenders, cjsInteropPlugin, etc.)
 │       │   │   ├── vitePluginAstroComponentMarker.ts     # Astro 6 component detection
 │       │   │   ├── vitePluginAstroBuildPrerender.ts      # Build-time pre-rendering
 │       │   │   ├── vitePluginAstroFontsFallback.ts       # Astro 6 font module stubs
@@ -259,10 +262,9 @@ storybook-astro/
 │           │   └── preset.ts      # Preview setup
 │           └── package.json
 ├── lib/
-│   └── test-utils.ts           # Vite plugins for Vitest (CJS interop)
+│   └── vitest-setup.ts         # Vitest setup file
 ├── src/
 │   └── components/             # Example components
-├── test-utils.ts               # Vitest test helpers
 ├── vitest.config.ts            # Test configuration
 ├── .storybook/                 # Storybook configuration
 └── package.json                # Root package
@@ -319,7 +321,7 @@ Astro 6 introduced several breaking changes to how components are transformed an
 
 **Problem**: Vite 6's ESM module runner cannot evaluate raw CommonJS modules (e.g. `cssesc`, `cookie`, `react`). Several Astro 6 runtime dependencies are still CJS.
 
-**Solution**: `cjsInteropPlugin()` in `lib/test-utils.ts` auto-detects CJS modules and wraps them with ESM-compatible shims providing `module`, `exports`, `require`, `__dirname`, and `__filename`. It also redirects bare package imports to ESM entry points when available. This plugin is used in `vitest.config.ts`.
+**Solution**: `cjsInteropPlugin()` from `@storybook/astro/testing` auto-detects CJS modules and wraps them with ESM-compatible shims providing `module`, `exports`, `require`, `__dirname`, and `__filename`. It also redirects bare package imports to ESM entry points when available. This plugin is used in `vitest.config.ts`.
 
 ## Roadmap: Astro Framework Feature Support
 
